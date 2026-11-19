@@ -127,6 +127,10 @@ details.month .count{background:#fff;border:1px solid var(--blue-mid);color:var(
 .badge-b{background:var(--green-bg);color:var(--green);border:1px solid #a7d7bc}
 .badge-est{background:var(--orange-bg);color:var(--orange);border:1px solid #f0c4a0}
 .badge-none{background:var(--gray-100);color:var(--gray-500);border:1px solid var(--gray-200)}
+.cfgbox{display:none;border:1px solid var(--blue-mid);background:var(--blue-light);border-radius:var(--radius);padding:16px 18px;margin-bottom:14px}
+.cfgbox.show{display:block}
+.cfgbox .actions{margin-top:14px;padding-top:0;border-top:none}
+.cfgbox .hint{line-height:1.45}
 .empty{text-align:center;padding:36px 12px;color:var(--text-dim);font-size:13px}
 
 /* Toast */
@@ -274,12 +278,30 @@ details.month .count{background:#fff;border:1px solid var(--blue-mid);color:var(
         </div>
         <div class="ph-actions">
           <button class="btn-export" id="btn-csv-all" type="button">⬇ CSV histórico</button>
+          <button class="btn-export" id="btn-gh" type="button">🔑 Token GitHub</button>
           <button class="btn-export" id="btn-bk-out" type="button" title="Descargar copia de seguridad (JSON)">Respaldo ⬇</button>
           <button class="btn-export" id="btn-bk-in" type="button" title="Cargar copia de seguridad (JSON)">Restaurar ⬆</button>
           <input type="file" id="bk-file" accept=".json,application/json" hidden>
         </div>
       </div>
-      <div class="note">Los registros se guardan en este navegador. Descargue el <b>Respaldo</b> periódicamente para no perder información si se borran los datos del navegador.</div>
+      <div class="cfgbox" id="cfg-box">
+        <div class="step">Sincronización con GitHub</div>
+        <div class="grid g2">
+          <div class="field"><label for="c-repo">Repositorio de datos (usuario/repo)</label><input id="c-repo" type="text" autocomplete="off" value="racso-ma/Pacientes_NoAdmitidos_DATA" placeholder="usuario/repo-privado"></div>
+          <div class="field"><label for="c-token">Token de acceso (fine-grained)</label><input id="c-token" type="password" autocomplete="off" placeholder="github_pat_…"></div>
+        </div>
+        <details style="margin-top:10px"><summary style="cursor:pointer;font-size:12px;color:var(--blue);font-weight:600">Opciones avanzadas</summary><div class="grid g2" style="margin-top:10px">
+          <div class="field"><label for="c-path">Archivo JSON</label><input id="c-path" type="text" autocomplete="off" value="registros.json"></div>
+          <div class="field"><label for="c-branch">Rama</label><input id="c-branch" type="text" autocomplete="off" value="main"></div>
+        </div></details>
+        <div class="hint warn" style="margin-top:10px">⚠ Use un repositorio <b>privado y distinto</b> del que publica esta página (GitHub Pages es público). El token debe tener solo el permiso <b>Contents: Read and write</b> sobre ese repositorio. El token queda guardado en este navegador. El panel se niega a conectar si el repositorio es público.</div>
+        <div class="hint" id="cfg-msg" style="margin-top:8px"></div>
+        <div class="actions">
+          <button class="btn-ghost" id="c-off" type="button">Desconectar</button>
+          <button class="btn-primary" id="c-save" type="button">Guardar token y conectar</button>
+        </div>
+      </div>
+      <div class="note">Los registros se guardan en este navegador y, si conecta <b>🔑 Token GitHub</b>, también en el archivo JSON de su repositorio de datos. Descargue el <b>Respaldo</b> periódicamente.</div>
       <div class="toolbar">
         <input type="search" id="q" placeholder="Buscar por paciente, RUT, diagnóstico, motivo o médico…">
       </div>
@@ -431,11 +453,13 @@ $('btn-save').addEventListener('click',function(){
     origen: cap($('p-origen').value),
     motivo: $('p-motivo').value.trim()
   };
+  if(cfg) reg.pend=true;
   registros.push(reg);
   if(!guardarLS()){ registros.pop(); return; }
   open.add('y'+fecha.slice(0,4)); open.add('m'+fecha.slice(0,7));
   limpiarForm();
   render();
+  sincronizar();
   showToast(rutValido(rut)?'Registro guardado':'Registro guardado (revise el RUT)', rutValido(rut)?'':'warn');
 });
 
@@ -498,8 +522,7 @@ function filaCaso(r, forzar){
       t=setTimeout(function(){ bd.classList.remove('confirm'); bd.textContent='Eliminar'; },3500);
     } else {
       clearTimeout(t);
-      registros=registros.filter(function(x){ return x.id!==r.id; });
-      guardarLS(); render(); showToast('Registro eliminado','warn');
+      eliminar(r);
     }
   });
   act.appendChild(bp); act.appendChild(bd); det.appendChild(act);
@@ -510,7 +533,7 @@ function filaCaso(r, forzar){
 function render(){
   var q=norm($('q').value.trim()), buscando=!!q;
   var cont=$('archivo'); cont.textContent='';
-  $('sync-status').textContent=registros.length+' registro'+(registros.length===1?'':'s')+' · guardado en este equipo';
+  $('sync-status').textContent=registros.length+' registro'+(registros.length===1?'':'s')+' · '+({'':'guardado en este equipo',ok:'sincronizado con GitHub',sync:'sincronizando…',err:'error de sincronización'})[estadoSync];
   var lista=registros.filter(function(r){ return coincide(r,q); })
                      .sort(function(a,b){ return b.fecha.localeCompare(a.fecha); });
   if(!lista.length){
@@ -578,7 +601,7 @@ $('btn-csv-all').addEventListener('click',function(){
 /* ---------- Respaldo ---------- */
 $('btn-bk-out').addEventListener('click',function(){
   if(!registros.length){ showToast('No hay registros para respaldar','warn'); return; }
-  descargar(new Blob([JSON.stringify(registros,null,1)],{type:'application/json'}),'respaldo_no_admitidos_'+nowLocal().slice(0,10)+'.json');
+  descargar(new Blob([JSON.stringify(registros.map(limpio),null,1)],{type:'application/json'}),'respaldo_no_admitidos_'+nowLocal().slice(0,10)+'.json');
   showToast('Respaldo descargado');
 });
 $('btn-bk-in').addEventListener('click',function(){ $('bk-file').click(); });
@@ -588,7 +611,7 @@ $('bk-file').addEventListener('change',function(){
   rd.onload=function(){
     try{
       var arr=JSON.parse(rd.result); if(!Array.isArray(arr)) throw 0;
-      var ids=new Set(registros.map(function(r){ return r.id; })), n=0;
+      var ids=new Set(registros.map(function(r){ return r.id; })), n=0, antes=registros.length;
       arr.forEach(function(r){
         if(r && r.id && r.fecha && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(r.fecha) && !ids.has(r.id)){
           registros.push({id:String(r.id),fecha:r.fecha,medico:String(r.medico||''),nombres:r.nombres!=null?String(r.nombres):undefined,apellido1:String(r.apellido1||''),apellido2:String(r.apellido2||''),paciente:String(r.paciente||''),rut:String(r.rut||''),
@@ -596,7 +619,8 @@ $('bk-file').addEventListener('change',function(){
           n++;
         }
       });
-      guardarLS(); render(); showToast(n+' registro'+(n===1?'':'s')+' restaurado'+(n===1?'':'s'));
+      if(cfg) registros.slice(antes).forEach(function(r){ r.pend=true; });
+      guardarLS(); render(); sincronizar(); showToast(n+' registro'+(n===1?'':'s')+' restaurado'+(n===1?'':'s'));
     }catch(e){ showToast('Archivo de respaldo no válido','err'); }
   };
   rd.readAsText(f); this.value='';
@@ -623,8 +647,121 @@ function imprimir(r){
   if(img.complete) go(); else { img.onload=go; img.onerror=go; }
 }
 
+/* ---------- Sincronización con GitHub (archivo JSON en repo privado) ---------- */
+var CFG_KEY='upc_gh_cfg_v1';
+var cfg=null, estadoSync='', cola=Promise.resolve();
+try{ var c0=JSON.parse(localStorage.getItem(CFG_KEY)||'null'); if(c0&&c0.repo&&c0.token) cfg=c0; }catch(e){}
+function limpio(r){ var c={}; for(var k in r){ if(k!=='pend') c[k]=r[k]; } return c; }
+function ghBase(){ return 'https://api.github.com/repos/'+cfg.repo; }
+function ghUrl(){ return ghBase()+'/contents/'+cfg.path.split('/').map(encodeURIComponent).join('/'); }
+function ghHead(accept){ return {'Authorization':'Bearer '+cfg.token,'Accept':accept||'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'}; }
+function b64enc(str){ var b=new TextEncoder().encode(str),s=''; for(var i=0;i<b.length;i+=0x8000) s+=String.fromCharCode.apply(null,b.subarray(i,i+0x8000)); return btoa(s); }
+function b64dec(b){ var s=atob(b.replace(/\s/g,'')),u=new Uint8Array(s.length); for(var i=0;i<s.length;i++) u[i]=s.charCodeAt(i); return new TextDecoder().decode(u); }
+function ghError(r){
+  if(r.status===401) return 'Token inválido o vencido';
+  if(r.status===403) return 'Sin permiso (revise permisos del token)';
+  if(r.status===404) return 'Repositorio no encontrado (revise nombre y permisos del token)';
+  return 'GitHub respondió '+r.status;
+}
+async function ghGet(){
+  var u=ghUrl()+'?ref='+encodeURIComponent(cfg.branch)+'&_='+Date.now();
+  var r=await fetch(u,{headers:ghHead(),cache:'no-store'});
+  if(r.status===404){
+    // ¿el repo existe pero falta el archivo? (se creará al guardar)
+    var rr=await fetch(ghBase(),{headers:ghHead(),cache:'no-store'});
+    if(!rr.ok) throw new Error(ghError(rr));
+    return {list:[],sha:null};
+  }
+  if(!r.ok) throw new Error(ghError(r));
+  var j=await r.json(), txt;
+  if(j.content){ txt=b64dec(j.content); }
+  else { var raw=await fetch(u,{headers:ghHead('application/vnd.github.raw+json'),cache:'no-store'}); if(!raw.ok) throw new Error(ghError(raw)); txt=await raw.text(); }
+  var list=JSON.parse(txt||'[]'); if(!Array.isArray(list)) throw new Error('El archivo remoto no es una lista de registros');
+  return {list:list,sha:j.sha};
+}
+async function ghPut(list,sha,msg){
+  var body={message:msg,content:b64enc(JSON.stringify(list,null,1)),branch:cfg.branch}; if(sha) body.sha=sha;
+  var r=await fetch(ghUrl(),{method:'PUT',headers:ghHead(),body:JSON.stringify(body)});
+  if(r.status===409||r.status===422){ var e=new Error('conflicto'); e.conflicto=true; throw e; }
+  if(!r.ok) throw new Error(ghError(r));
+}
+async function ghMutar(fn,msg){
+  for(var i=0;i<3;i++){
+    try{ var cur=await ghGet(); var nl=fn(cur.list); await ghPut(nl,cur.sha,msg); return nl; }
+    catch(e){ if(!e.conflicto||i===2) throw e; }
+  }
+}
+function aplicarRemoto(nl, idsPend){
+  var nuevos=registros.filter(function(r){ return r.pend && !idsPend.has(r.id); });
+  registros=nl.concat(nuevos); guardarLS();
+}
+function sincronizar(){
+  if(!cfg) return cola;
+  estadoSync='sync'; render();
+  cola=cola.then(async function(){
+    var pend=registros.filter(function(r){ return r.pend; }), ids=new Set(pend.map(function(r){ return r.id; })), nl;
+    if(pend.length){
+      nl=await ghMutar(function(list){
+        var ex=new Set(list.map(function(x){ return x.id; }));
+        pend.forEach(function(p){ if(!ex.has(p.id)) list.push(limpio(p)); });
+        return list;
+      },'Nuevo(s) registro(s) UPC');
+    } else { nl=(await ghGet()).list; }
+    aplicarRemoto(nl,ids); estadoSync='ok'; render();
+  }).catch(function(e){
+    estadoSync='err'; render();
+    showToast('GitHub: '+(e&&e.message?e.message:'sin conexión')+'. Quedó guardado en este equipo y se reintentará.','err');
+  });
+  return cola;
+}
+function eliminar(r){
+  if(!cfg || r.pend){ registros=registros.filter(function(x){ return x.id!==r.id; }); guardarLS(); render(); showToast('Registro eliminado','warn'); return; }
+  estadoSync='sync'; render();
+  cola=cola.then(async function(){
+    var nl=await ghMutar(function(list){ return list.filter(function(x){ return x.id!==r.id; }); },'Eliminar registro');
+    aplicarRemoto(nl,new Set()); estadoSync='ok'; render(); showToast('Registro eliminado','warn');
+  }).catch(function(e){
+    estadoSync='err'; render(); showToast('No se pudo eliminar en GitHub: '+(e&&e.message?e.message:'sin conexión'),'err');
+  });
+}
+
+/* Panel de configuración */
+function cfgMsg(t,cls){ var m=$('cfg-msg'); m.textContent=t; m.className='hint'+(cls?' '+cls:''); }
+$('btn-gh').addEventListener('click',function(){
+  var b=$('cfg-box'); b.classList.toggle('show');
+  if(cfg){ $('c-repo').value=cfg.repo; $('c-path').value=cfg.path; $('c-branch').value=cfg.branch; $('c-token').value=''; $('c-token').placeholder='(guardado — deje vacío para conservarlo)';
+           cfgMsg('Conectado a '+cfg.repo+' · '+cfg.path); }
+});
+$('c-save').addEventListener('click',async function(){
+  var repo=$('c-repo').value.trim().replace(/^https?:\/\/github\.com\//,'').replace(/\.git$/,'').replace(/\/$/,'');
+  var path=$('c-path').value.trim().replace(/^\//,'')||'registros.json', branch=$('c-branch').value.trim()||'main';
+  var token=$('c-token').value.trim()||(cfg?cfg.token:'');
+  if(!/^[\w.-]+\/[\w.-]+$/.test(repo)){ cfgMsg('Escriba el repositorio como usuario/repo','warn'); return; }
+  if(!token){ cfgMsg('Falta el token de acceso','warn'); return; }
+  var previo=cfg; cfg={repo:repo,path:path,branch:branch,token:token};
+  cfgMsg('Probando conexión…');
+  try{
+    var rr=await fetch(ghBase(),{headers:ghHead(),cache:'no-store'});
+    if(!rr.ok) throw new Error(ghError(rr));
+    var info=await rr.json();
+    if(info.private!==true) throw new Error('El repositorio es PÚBLICO. Use uno privado: los datos de pacientes quedarían expuestos.');
+    var cur=await ghGet();
+    var ex=new Set(cur.list.map(function(x){ return x.id; }));
+    registros.forEach(function(r){ if(!ex.has(r.id)) r.pend=true; });
+    try{ localStorage.setItem(CFG_KEY,JSON.stringify(cfg)); }catch(e){}
+    $('c-token').value=''; cfgMsg('Conectado a '+repo+' · '+path);
+    await sincronizar();
+    showToast('GitHub conectado');
+  }catch(e){ cfg=previo; cfgMsg(e.message||'No se pudo conectar','warn'); }
+});
+$('c-off').addEventListener('click',function(){
+  try{ localStorage.removeItem(CFG_KEY); }catch(e){}
+  cfg=null; estadoSync=''; $('c-token').value=''; registros.forEach(function(r){ delete r.pend; }); guardarLS(); render();
+  cfgMsg('Desconectado. Los registros siguen guardados en este equipo.'); showToast('GitHub desconectado','warn');
+});
+
 /* ---------- Inicio ---------- */
-cargar(); render();
+cargar(); render(); if(cfg) sincronizar();
 })();
 </script>
 </body>
