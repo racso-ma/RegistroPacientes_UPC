@@ -77,6 +77,9 @@ header{background:var(--blue);padding:0 28px;height:60px;display:flex;align-item
 #form-rest{margin-top:22px;display:none}
 #form-rest.show{display:block;animation:slide .28s ease}
 @keyframes slide{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
+.doc-actions{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:12px}
+.doc-actions .hint{margin:0}
+.btn-primary:disabled{opacity:.45;cursor:not-allowed;transform:none;box-shadow:none}
 .doc-chip{display:flex;align-items:center;gap:10px;margin-bottom:18px;font-size:13px;color:var(--text-muted)}
 .doc-chip b{color:var(--blue)}
 .actions{display:flex;gap:10px;justify-content:flex-end;margin-top:22px;padding-top:18px;border-top:1px solid var(--gray-100)}
@@ -197,23 +200,34 @@ details.month .count{background:#fff;border:1px solid var(--blue-mid);color:var(
         <div class="grid g2">
           <div class="field" id="f-dnombre">
             <label for="d-nombre">Nombre <span class="req">*</span></label>
-            <input id="d-nombre" type="text" autocomplete="off" placeholder="Ej: Juan">
+            <input id="d-nombre" type="text" autocomplete="off" placeholder="Ej: Oscar">
           </div>
           <div class="field" id="f-dapellido">
             <label for="d-apellido">Apellido <span class="req">*</span></label>
-            <input id="d-apellido" type="text" autocomplete="off" placeholder="Ej: Pérez">
+            <input id="d-apellido" type="text" autocomplete="off" placeholder="Ej: Muñoz">
           </div>
         </div>
-        <div class="hint" id="doc-hint">Al ingresar nombre y apellido se desplegará el resto del formulario.</div>
+        <div class="doc-actions">
+          <div class="hint" id="doc-hint">Ingrese nombre y apellido y presione «Ingresar» para abrir el formulario.</div>
+          <button class="btn-primary" id="btn-ingresar" type="button" disabled>Ingresar</button>
+        </div>
       </div>
 
       <div id="form-rest">
-        <div class="doc-chip">Registra: <b id="doc-chip-name"></b></div>
+        <div class="doc-chip">Registra: <b id="doc-chip-name"></b> <button class="mini" id="btn-cambiar" type="button">Cambiar médico</button></div>
         <div class="step"><span class="n">2</span> Datos del paciente y rechazo</div>
         <div class="grid g2">
-          <div class="field" id="f-pnombre">
-            <label for="p-nombre">Nombre del paciente <span class="req">*</span></label>
-            <input id="p-nombre" type="text" autocomplete="off" placeholder="Nombre y apellidos">
+          <div class="field full" id="f-pnombre">
+            <label for="p-nombre">Nombre(s) del paciente <span class="req">*</span></label>
+            <input id="p-nombre" type="text" autocomplete="off" placeholder="Ej: María Fernanda">
+          </div>
+          <div class="field" id="f-pap1">
+            <label for="p-ap1">Primer apellido <span class="req">*</span></label>
+            <input id="p-ap1" type="text" autocomplete="off" placeholder="Apellido paterno">
+          </div>
+          <div class="field" id="f-pap2">
+            <label for="p-ap2">Segundo apellido</label>
+            <input id="p-ap2" type="text" autocomplete="off" placeholder="Apellido materno">
           </div>
           <div class="field" id="f-rut">
             <label for="p-rut">RUT <span class="req">*</span></label>
@@ -354,22 +368,28 @@ var selPrev = $('p-prev');
 })();
 
 function medicoListo(){ return $('d-nombre').value.trim().length>=2 && $('d-apellido').value.trim().length>=2; }
-function actualizarMedico(){
-  var ok=medicoListo(), rest=$('form-rest');
-  if(ok){
-    $('doc-chip-name').textContent=cap($('d-nombre').value)+' '+cap($('d-apellido').value);
-    if(!rest.classList.contains('show')){
-      if(!$('p-fecha').value) $('p-fecha').value=nowLocal();
-      rest.classList.add('show');
-    }
-    $('doc-hint').textContent='';
-  } else {
-    rest.classList.remove('show');
-    $('doc-hint').textContent='Al ingresar nombre y apellido se desplegará el resto del formulario.';
-  }
+function actualizarBoton(){ $('btn-ingresar').disabled=!medicoListo(); }
+function ingresar(){
+  if(!medicoListo()) return;
+  $('doc-chip-name').textContent=cap($('d-nombre').value)+' '+cap($('d-apellido').value);
+  if(!$('p-fecha').value) $('p-fecha').value=nowLocal();
+  $('d-nombre').disabled=true; $('d-apellido').disabled=true;
+  $('btn-ingresar').style.display='none'; $('doc-hint').textContent='';
+  $('form-rest').classList.add('show');
+  $('p-nombre').focus();
 }
-$('d-nombre').addEventListener('input',actualizarMedico);
-$('d-apellido').addEventListener('input',actualizarMedico);
+function cerrarFormulario(){
+  $('form-rest').classList.remove('show');
+  $('d-nombre').disabled=false; $('d-apellido').disabled=false;
+  $('btn-ingresar').style.display='';
+  $('doc-hint').textContent='Ingrese nombre y apellido y presione «Ingresar» para abrir el formulario.';
+  actualizarBoton();
+}
+$('d-nombre').addEventListener('input',actualizarBoton);
+$('d-apellido').addEventListener('input',actualizarBoton);
+['d-nombre','d-apellido'].forEach(function(id){ $(id).addEventListener('keydown',function(e){ if(e.key==='Enter') ingresar(); }); });
+$('btn-ingresar').addEventListener('click',ingresar);
+$('btn-cambiar').addEventListener('click',function(){ cerrarFormulario(); $('d-nombre').focus(); });
 
 $('p-rut').addEventListener('input',function(){
   var pos=this.value; this.value=rutFormato(pos); $('rut-hint').textContent=''; $('rut-hint').className='hint';
@@ -381,7 +401,7 @@ $('p-rut').addEventListener('blur',function(){
 });
 
 var CAMPOS = [
-  ['d-nombre','f-dnombre'],['d-apellido','f-dapellido'],['p-nombre','f-pnombre'],['p-rut','f-rut'],
+  ['d-nombre','f-dnombre'],['d-apellido','f-dapellido'],['p-nombre','f-pnombre'],['p-ap1','f-pap1'],['p-rut','f-rut'],
   ['p-prev','f-prev'],['p-origen','f-origen'],['p-diag','f-diag'],['p-motivo','f-motivo']
 ];
 CAMPOS.forEach(function(c){
@@ -390,8 +410,8 @@ CAMPOS.forEach(function(c){
 
 function limpiarForm(){
   CAMPOS.forEach(function(c){ $(c[0]).value=''; $(c[1]).classList.remove('err'); });
-  $('p-fecha').value=''; $('rut-hint').textContent='';
-  actualizarMedico();
+  $('p-ap2').value=''; $('p-fecha').value=''; $('rut-hint').textContent='';
+  cerrarFormulario();
 }
 $('btn-cancel').addEventListener('click',limpiarForm);
 
@@ -408,7 +428,10 @@ $('btn-save').addEventListener('click',function(){
     id: Date.now().toString(36)+Math.random().toString(36).slice(2,6),
     fecha: fecha,
     medico: cap($('d-nombre').value)+' '+cap($('d-apellido').value),
-    paciente: cap($('p-nombre').value),
+    nombres: cap($('p-nombre').value),
+    apellido1: cap($('p-ap1').value),
+    apellido2: cap($('p-ap2').value),
+    paciente: [cap($('p-nombre').value),cap($('p-ap1').value),cap($('p-ap2').value)].filter(Boolean).join(' '),
     rut: rut,
     diagnostico: cap($('p-diag').value),
     prevision: $('p-prev').value,
@@ -458,7 +481,9 @@ function filaCaso(r, forzar){
   row.appendChild(head);
 
   var det=el('div','row-detail'), g=el('div','dgrid');
-  g.appendChild(dato('Paciente',r.paciente));
+  g.appendChild(dato('Nombre(s)',r.nombres!=null?r.nombres:r.paciente));
+  g.appendChild(dato('Primer apellido',r.apellido1||'—'));
+  g.appendChild(dato('Segundo apellido',r.apellido2||'—'));
   g.appendChild(dato('RUT',r.rut,'mono'));
   var b=el('span',claseBadge(r.prevision),r.prevision);
   g.appendChild(dato('Previsión',null,null,b));
@@ -543,10 +568,10 @@ function descargar(blob,nombre){
 }
 function descargarCSV(lista,nombre){
   if(!lista.length){ showToast('No hay registros para descargar','warn'); return; }
-  var cols=['Fecha','Hora','Paciente','RUT','Diagnóstico','Previsión','Origen','Motivo rechazo','Médico'];
+  var cols=['Fecha','Hora','Nombre(s)','Primer apellido','Segundo apellido','RUT','Diagnóstico','Previsión','Origen','Motivo rechazo','Médico'];
   var lineas=[cols.map(celda).join(';')];
   lista.forEach(function(r){
-    lineas.push([fmtFecha(r.fecha).slice(0,10),r.fecha.slice(11,16),r.paciente,r.rut,r.diagnostico,r.prevision,r.origen,r.motivo.replace(/\s*\n\s*/g,' '),r.medico].map(celda).join(';'));
+    lineas.push([fmtFecha(r.fecha).slice(0,10),r.fecha.slice(11,16),(r.nombres!=null?r.nombres:r.paciente),r.apellido1||'',r.apellido2||'',r.rut,r.diagnostico,r.prevision,r.origen,r.motivo.replace(/\s*\n\s*/g,' '),r.medico].map(celda).join(';'));
   });
   // BOM UTF-8 + separador ';' para que Excel en español abra bien tildes y columnas
   descargar(new Blob(['﻿'+lineas.join('\r\n')],{type:'text/csv;charset=utf-8'}),nombre);
@@ -573,7 +598,7 @@ $('bk-file').addEventListener('change',function(){
       var ids=new Set(registros.map(function(r){ return r.id; })), n=0;
       arr.forEach(function(r){
         if(r && r.id && r.fecha && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(r.fecha) && !ids.has(r.id)){
-          registros.push({id:String(r.id),fecha:r.fecha,medico:String(r.medico||''),paciente:String(r.paciente||''),rut:String(r.rut||''),
+          registros.push({id:String(r.id),fecha:r.fecha,medico:String(r.medico||''),nombres:r.nombres!=null?String(r.nombres):undefined,apellido1:String(r.apellido1||''),apellido2:String(r.apellido2||''),paciente:String(r.paciente||''),rut:String(r.rut||''),
             diagnostico:String(r.diagnostico||''),prevision:String(r.prevision||''),origen:String(r.origen||''),motivo:String(r.motivo||'')});
           n++;
         }
