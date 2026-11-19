@@ -726,6 +726,8 @@ function eliminar(r){
 }
 
 /* Panel de configuración */
+function etiquetaGH(){ $('btn-gh').textContent=cfg?'☁ GitHub conectado':'🔑 Token GitHub'; }
+etiquetaGH();
 function cfgMsg(t,cls){ var m=$('cfg-msg'); m.textContent=t; m.className='hint'+(cls?' '+cls:''); }
 $('btn-gh').addEventListener('click',function(){
   var b=$('cfg-box'); b.classList.toggle('show');
@@ -750,6 +752,7 @@ $('c-save').addEventListener('click',async function(){
     registros.forEach(function(r){ if(!ex.has(r.id)) r.pend=true; });
     try{ localStorage.setItem(CFG_KEY,JSON.stringify(cfg)); }catch(e){}
     $('c-token').value=''; cfgMsg('Conectado a '+repo+' · '+path);
+    $('cfg-box').classList.remove('show'); etiquetaGH();
     await sincronizar();
     showToast('GitHub conectado');
   }catch(e){ cfg=previo; cfgMsg(e.message||'No se pudo conectar','warn'); }
@@ -757,7 +760,7 @@ $('c-save').addEventListener('click',async function(){
 $('c-off').addEventListener('click',function(){
   try{ localStorage.removeItem(CFG_KEY); }catch(e){}
   cfg=null; estadoSync=''; $('c-token').value=''; registros.forEach(function(r){ delete r.pend; }); guardarLS(); render();
-  cfgMsg('Desconectado. Los registros siguen guardados en este equipo.'); showToast('GitHub desconectado','warn');
+  etiquetaGH(); cfgMsg('Desconectado. Los registros siguen guardados en este equipo.'); showToast('GitHub desconectado','warn');
 });
 
 /* ---------- Inicio ---------- */
